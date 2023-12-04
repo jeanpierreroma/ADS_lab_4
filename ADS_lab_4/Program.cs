@@ -1,8 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 class RSACSPSample
@@ -13,13 +13,11 @@ class RSACSPSample
 
     static void Main()
     {
-        const string fileName = "text_4.txt";
-        string directoryName = fileName.Substring(0, fileName.LastIndexOf("."));
+        const string fileName = "text_1.txt";
 
         // Зчитуємо дані для шифрування
         byte[] plainText = ReadTextFile(fileName);
         Console.WriteLine("Data was readed from file");
-        //byte[] plainText = Encoding.UTF8.GetBytes("Roman");
 
         using (RSACng rsa = new RSACng())
         {
@@ -29,16 +27,20 @@ class RSACSPSample
             Stopwatch rsaEcryptTime = new Stopwatch();
             rsaEcryptTime.Start();
 
-            RSAEncryptAlgorithm(plainText, directoryName, publicKey);
+            byte[] encryptedData = RSAEncryptAlgorithm(plainText, publicKey);
 
             rsaEcryptTime.Stop();
+
+            WriteByteFile($"encrypted_{fileName}", encryptedData);
             Console.WriteLine($"Data was crypted into folder, time: {rsaEcryptTime.Elapsed}");
 
             //Розшифрування
+            byte[] dataToDecrypt = ReadByteFile($"encrypted_{fileName}");
+
             Stopwatch rsaDecryptTime = new Stopwatch();
             rsaDecryptTime.Start();
 
-            string decryptedText = RSADecryptAlgorithm(directoryName, publicKey);
+            string decryptedText = RSADecryptAlgorithm(dataToDecrypt, publicKey);
 
             rsaDecryptTime.Stop();
             Console.WriteLine($"Data was decrypted into file, time: {rsaDecryptTime.Elapsed}");
@@ -106,47 +108,37 @@ class RSACSPSample
         return decryptedData;
     }
 
-    public static void RSAEncryptAlgorithm(byte[] plainText, string directoryName, RSAParameters publicKey)
+    public static byte[] RSAEncryptAlgorithm(byte[] plainText, RSAParameters publicKey)
     {
         // Розбивка даних на блоки
         int blockSize = 128;
+        int blockCypherFile = 256;
 
         byte[][] dataToEncrypt = SplitDataIntoBlocks(plainText, blockSize);
 
-        // Створюємо теку для шифрованих файлів
-        Directory.CreateDirectory(DefaultRouteEncryptedFile + directoryName);
-
-        // Шифрування та зберігання кожного блоку окремо
-        bool isLast = true;
+        // Шифрування кожного блоку окремо
+        byte[] encryptData = new byte[dataToEncrypt.Length * blockCypherFile];
         for (int i = 0; i < dataToEncrypt.Length; i++)
         {
-            if (i == dataToEncrypt.Length - 1)
-            {
-                isLast = true;
-            }
+            Encrypt(dataToEncrypt[i], out byte[] encryptedData, publicKey, true);
 
-            Encrypt(dataToEncrypt[i], out byte[] encryptedData, publicKey, isLast);
-
-            WriteByteFile(directoryName + $"\\encrypted_block_{i + 1}.txt", encryptedData);
+            Array.Copy(encryptedData, 0, encryptData, i * blockCypherFile, encryptedData.Length);
         }
+
+        return encryptData;
+
     }
-    public static string RSADecryptAlgorithm(string directoryName, RSAParameters publicKey)
+    public static string RSADecryptAlgorithm(byte[] encryptedData, RSAParameters publicKey)
     {
+        int blockSize = 256;
+
         StringBuilder decryptedText = new StringBuilder();
 
-        int fCount = Directory.GetFiles(DefaultRouteEncryptedFile + directoryName, "*", SearchOption.TopDirectoryOnly).Length;
+        byte[][] dataToDecrypt = SplitDataIntoBlocks(encryptedData, blockSize);
 
-        bool isLast = true;
-        for (int i = 0; i < fCount; i++)
+        for (int i = 0; i < dataToDecrypt.Length; i++)
         {
-            if (i == fCount - 1)
-            {
-                isLast = true;
-            }
-
-            var encryptedData = ReadByteFile(directoryName + $"\\encrypted_block_{i + 1}.txt");
-
-            Decrypt(encryptedData, out byte[] decryptData, publicKey, isLast);
+            Decrypt(dataToDecrypt[i], out byte[] decryptData, publicKey, true);
 
             decryptedText.Append(Encoding.UTF8.GetString(decryptData));
         }
